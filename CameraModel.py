@@ -1,5 +1,6 @@
 import numpy as np
-from functions import *
+from functions import getRotationMatrix
+
 class Camera:
     
     def __init__(self, handler, position, euler_angles, resolution:tuple ,distortion = None):
@@ -7,11 +8,7 @@ class Camera:
         self.pos_x, self.pos_y, self.pos_z = position
         self.alpha, self.beta, self.gamma = euler_angles
         
-        self.K =  np.array([
-                    [1,0,0],
-                    [0,1,0],
-                    [0,0,1]
-                ]) if not distortion else distortion
+        self.K =  np.eye(3) if not distortion else distortion
 
         self.R = getRotationMatrix(self.alpha,self.beta,self.gamma)
         self.resolution = resolution
@@ -24,3 +21,6 @@ class Camera:
 
     def getRawImage(self):
         return self.handler.raw_image()
+    
+    def getCameraInfo(self):
+        return self.handler.read()
