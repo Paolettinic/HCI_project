@@ -67,7 +67,7 @@ def main():
             )
         while True:
             img = camera1.getCorrectRawImage()
-            img = cv2.resize(img,None,fx=1,fy=1)
+            img = cv2.resize(img,None,fx=1,fy=1) #needed for cv2 img
             height, width, channels = img.shape
             blob, outputs = detect_objects(img,net,output_layers,height,width)
             boxes, confs, class_ids = get_box_dimensions(outputs, height, width)
