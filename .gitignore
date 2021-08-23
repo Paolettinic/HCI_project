@@ -132,4 +132,5 @@ dmypy.json
 
 #Weights and cfg
 *.weights
-*.cfg
+# *.cfg
+# *.names

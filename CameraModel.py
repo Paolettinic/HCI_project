@@ -17,6 +17,7 @@ class Camera:
         img = self.handler.raw_image()
         img = np.array(img,dtype=np.uint8)
         img.resize([self.resolution[0],self.resolution[1],3])
+        img = np.flip(img)
         return img
 
     def getRawImage(self):
