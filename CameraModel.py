@@ -3,10 +3,16 @@ from functions import getRotationMatrix
 
 class Camera:
     
-    def __init__(self, handler, position, euler_angles, resolution:tuple ,distortion = None):
+    def __init__(self,name, handler, position, orientation, resolution:tuple ,distortion = None):
+        print(name)
+        print(handler)
+        print(position)
+        print(orientation)
+        print(resolution)
+        self.name = name
         self.handler = handler
         self.pos_x, self.pos_y, self.pos_z = position
-        self.alpha, self.beta, self.gamma = euler_angles
+        self.alpha, self.beta, self.gamma = orientation
         
         self.K =  np.eye(3) if not distortion else distortion
 
