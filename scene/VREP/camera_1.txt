@@ -1,0 +1,3 @@
+#These are the parameters of the cameras needed to compute the projection matrix, in order:
+# x position, y position, z position, alpha, beta, gamma, resolution, angular field of view( assumed square images)
+9.35,	9.35,	3,	125.18,	-29.78,	19.30,	512,	75

@@ -1,33 +1,34 @@
 import numpy as np
-from functions import getRotationMatrix
+from camera_tools import *
 
-class Camera:
-    
-    def __init__(self,name, handler, position, orientation, resolution:tuple ,distortion = None):
-        print(name)
-        print(handler)
-        print(position)
-        print(orientation)
-        print(resolution)
-        self.name = name
-        self.handler = handler
-        self.pos_x, self.pos_y, self.pos_z = position
-        self.alpha, self.beta, self.gamma = orientation
-        
-        self.K =  np.eye(3) if not distortion else distortion
 
-        self.R = getRotationMatrix(self.alpha,self.beta,self.gamma)
-        self.resolution = resolution
 
-    def getCorrectRawImage(self):
-        img = self.handler.raw_image()
-        img = np.array(img,dtype=np.uint8)
-        img.resize([self.resolution[0],self.resolution[1],3])
-        img = np.flip(img)
-        return img
+class CameraModel():
+		
+	def __init__(self, position:np.ndarray, orientation:np.ndarray, resolution:float ,afov:float) -> None:
 
-    def getRawImage(self):
-        return self.handler.raw_image()
-    
-    def getCameraInfo(self):
-        return self.handler.read()
+		self.pos_x, self.pos_y, self.pos_z = position
+		self.alpha, self.beta, self.gamma = np.deg2rad(orientation)
+		self.resolution = int(resolution) #TODO: add xres, yres
+		self.afov = afov
+		self.focal_length, self.P = make_camera_matrix(position,self.alpha, self.beta, self.gamma, resolution, afov)
+
+	def project_point(self, point: np.ndarray) -> np.ndarray:
+		res = self.P @ point
+		return res/res[2]
+
+	def invert_projection (self, image_point:np.ndarray, height:float) -> np.ndarray:
+		M = self.P[:3,:3]
+		p4 = self.P[:,3:]
+		M_inv = np.linalg.inv(M)
+		mu = (height + (M_inv@p4)[2][0])/((M_inv @ image_point)[2][0])
+		return M_inv @ (mu*image_point - p4)
+
+
+	def __str__(self):
+		return f"	{[self.pos_x,self.pos_y,self.pos_z,]=}\n\
+					{[self.alpha, self.beta, self.gamma]=}\n\
+					{self.resolution=}\n\
+					{self.afov=}\n\
+					{self.focal_length=}\n\
+					{self.P=}"

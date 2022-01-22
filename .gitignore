@@ -132,5 +132,12 @@ dmypy.json
 
 #Weights and cfg
 *.weights
-# *.cfg
-# *.names
+*.cfg
+*.names
+
+#Video files 
+*.mp4
+
+#Dataset directory
+LAB/
+VIDEO/
