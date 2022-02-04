@@ -141,3 +141,6 @@ dmypy.json
 #Dataset directory
 LAB/
 VIDEO/
+
+#Checkpoint Directory
+batch_16_epochs_50/

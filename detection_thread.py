@@ -9,21 +9,15 @@ from queue import Queue
 
 
 class Detection:
-	def __init__(self, x1, y1, x2, y2, height = None) -> None:
+	def __init__(self, x1, y1, x2, y2) -> None:
 		self.u = 0
 		self.v = 0
 		self.update_bbox(x1,y1,x2,y2)
-		if height is None:
-			self.height = 1.67 # use an approximate height to compute an approximate position
-			self.detected_height = False
-		else:
-			self.update_height(height)
+
+		self.height = 1.67 # use an approximate height to compute an approximate position
+
 		self.deleted = False
 		self.from_last_update = 0
-
-	def update_height(self, height):
-		self.height = height
-		self.detected_height = True
 
 	def update_bbox(self, x1, y1, x2, y2):
 		self.x1, self.y1, self.x2, self.y2 = x1, y1, x2, y2
@@ -48,13 +42,11 @@ class ImageDetectionThread(threading.Thread):
 		self.frame = np.zeros((512,512,3))
 		self.output = np.zeros((512,512,3))
 		layers_names = self.net.getLayerNames()
-		self.output_layers = [layers_names[i[0]-1] for i in self.net.getUnconnectedOutLayers()]
+		self.output_layers = [layers_names[i-1] for i in self.net.getUnconnectedOutLayers().flatten()]
 		self.kill = False
 		self.sort = Sort()
 		self.detections = {}
-		self.without_height = []
 		self.display = display
-		self.height_queue = Queue(4)
 		# if display:
 		# 	cv2.namedWindow(self.camera_model.name) #Create opencv window to display the image 
 

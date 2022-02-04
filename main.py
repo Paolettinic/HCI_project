@@ -5,20 +5,18 @@ import numpy as np
 import os
 from detection_thread import ImageDetectionThread
 from vision_sensor import VisionSensor
+import time
+from generator_model import Generator
+from create_high_fps_video import create_high_fps_video
+import tensorflow as tf
 
 YOLO_PATH = "YOLOv4"
-WEIGHTS_YOLO320 = "yolov3-320.weights"
-WEIGHTS_YOLO_TINY = "yolov3-tiny.weights"
-WEIGHTS_YOLO = "yolov3.weights"
+
 WEIGHTS_YOLO4_TINY = "yolov4-tiny.weights"
-WEIGHTS_YOLO4_416 = "yolov4-leaky-416.weights"
 
-
-CFG_YOLO320 = "yolov3-320.cfg"
-CFG_YOLO_TINY = "yolov3-tiny.cfg"
-CFG_YOLO = "yolov3.cfg"
 CFG_YOLO4_TINY = "yolov4-tiny.cfg"
-CFG_YOLO4_416 = "yolov4-leaky-416.cfg"
+
+CHECKPOINT_PATH = "batch_16_epochs_50"
 
 SCENE = "scene"
 SELECTED_SCENE = "VREP"
@@ -34,13 +32,15 @@ CONFIG = os.path.join(YOLO_PATH,CFG_YOLO4_TINY)
 NAMES = "coco.names"
 NO_CAMERAS = 2
 DISPLAY = True
-
+FPS = 15
 dist_count = 0
 
 
 COLOR_RED = [0,0,240]
 
-proximity_sensor_readings = {"read_height":[]}
+timer = {}
+timer["Vision_sensor1"] = time.perf_counter()
+timer["Vision_sensor2"] = time.perf_counter()
 
 def get_correct_image(image):
 	# necessary in order to show and analyze the image correctly:
@@ -57,24 +57,23 @@ def get_correct_image(image):
 		cv2.COLOR_RGB2BGR
 	)
 
-def getImage(msg,detection_thread):
-	detection_thread.frame = get_correct_image(msg)
+def getImage(msg,vs):
+	frame = get_correct_image(msg)
+	vs.detection_thread.frame = frame
+	clock = time.perf_counter()
+	if clock - timer[f"{vs.name}"] > 1/FPS:	
 
-def image_callback(thread):
-	return lambda msg : getImage(msg, thread)
+		vs.output_buffer.write(cv2.resize(
+			frame,
+			(256,256),
+			interpolation = cv2.INTER_AREA
+			)
+		)
+		timer[f"{vs.name}"] = clock
 
-def proximity_sensor_callback(read_obj, thread_list):
-	return lambda msg: getHeight(msg, read_obj, thread_list)
+def image_callback(vision_sensor):
+	return lambda msg : getImage(msg, vision_sensor)
 
-def getHeight(msg, read_obj, thread_list):
-	if msg:
-		if msg[1] > 0:
-			read_obj["read_height"].append(msg[3][2])
-		else:
-			if len(read_obj["read_height"]) > 0:
-				for thread in thread_list:
-					thread.height_queue.put(2.0 - min(read_obj["read_height"]))
-				read_obj["read_height"] = []
 
 def read_camera_params(calibration_file_path : str): #TODO: rewrite for robustness, use best practice
 	params = []
@@ -121,10 +120,9 @@ def points_cluster(array, maxdiff):
 		return [],[]
 
 def main():
-
+	fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 	detection_threads = []
 	vision_sensors = []
-	proximity_sensor_readings["read_height"] = []
 
 	parameter_cameras = [
 		read_camera_params(PATH_PARAMETERS_1), 
@@ -132,23 +130,22 @@ def main():
 	]
 
 	for i in range(NO_CAMERAS):
+		vs_name = f"Vision_sensor{i+1}"
 		vision_sensors.append(
 			VisionSensor(
-				f"Vision_sensor{i+1}",
+				vs_name,
 				ImageDetectionThread(
 					WEIGHT,
 					CONFIG,
 					NAMES,
 					DISPLAY
 				),
-				CameraModel(*parameter_cameras[i])  
+				CameraModel(*parameter_cameras[i]),
+				cv2.VideoWriter(f"{vs_name}.mp4", fourcc, FPS, (256, 256))
 			)
 		)
 		if DISPLAY:
-			cv2.namedWindow(f"Vision_sensor{i+1}")
-
-	proximity_sensor_name = "door_top_sensor"
-	
+			cv2.namedWindow(vs_name)
 
 
 	with b0RemoteApi.RemoteApiClient('b0RemoteApi_pythonClient','b0RemoteApi',inactivityToleranceInSec=200) as client:		
@@ -159,24 +156,13 @@ def main():
 			client.simxGetObjectHandle(vs.name,client.simxServiceCall())[1] 
 			for vs in vision_sensors
 		]
-		laser_scanner_handler = client.simxGetObjectHandle(
-			proximity_sensor_name,
-			client.simxServiceCall()
-		)[1]
 
 		for idx, vs in enumerate(visionSensorHandles):
 			client.simxGetVisionSensorImage(
 				vs,
 				False,
-				client.simxDefaultSubscriber(image_callback(vision_sensors[idx].detection_thread))
+				client.simxDefaultSubscriber(image_callback(vision_sensors[idx]))
 			)
-
-		client.simxReadProximitySensor(
-				laser_scanner_handler,
-				client.simxDefaultSubscriber(
-					proximity_sensor_callback(proximity_sensor_readings,detection_threads)
-				)
-		)
 
 		for vs in vision_sensors:
 			vs.detection_thread.start()
@@ -197,7 +183,7 @@ def main():
 					cv2.imshow(v_s.name, v_s.detection_thread.output)
 
 				s_det = []
-				for label,detection in v_s.detection_thread.detections.items():
+				for _,detection in v_s.detection_thread.detections.items():
 					# print(label)
 					ground_pos = v_s.camera_model.invert_projection(
 						np.array([[detection.u], [detection.v], [1]]),
@@ -244,13 +230,32 @@ def main():
 			
 		for vs in vision_sensors:
 			vs.detection_thread.join()
+			vs.output_buffer.release()
 
 		client.simxStopSimulation(client.simxDefaultPublisher())
 		
 
 		cv2.destroyAllWindows()
-	print("done")
+	print("Realtime tracking done")
 				
 if __name__ == "__main__":
 	main()
-	print("main done")
+	print("Restoring checkpoint...")
+	gen = Generator()
+	checkpoint = tf.train.Checkpoint(generator = gen)
+	chkp_man =  tf.train.CheckpointManager(
+		checkpoint,
+		CHECKPOINT_PATH,
+		max_to_keep=1
+	)
+	checkpoint.restore(chkp_man.latest_checkpoint)
+	if chkp_man.latest_checkpoint:
+		print("Restored from {}".format(chkp_man.latest_checkpoint))
+	else:
+		print("Could not restore the checkpoint, check the path or train the network and place it in this folder!\n")
+
+	print("Generating high FPS videos")
+	for i in range(1,NO_CAMERAS+1):
+		create_high_fps_video(gen,f"Vision_sensor{i}.mp4",f"Vision_sensor{i}_HIGHFPS.mp4")
+		print(f"High FPS video stored in : Vision_sensor{i}_HIGHFPS.mp4")
+	print()
